@@ -6,45 +6,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-  body{
-    margin:0;
-    font-family:system-ui,Arial;
-    background:#0b1220;
-    color:#fff;
-    text-align:center;
-  }
-  header{
-    padding:14px;
-    background:#020617;
-    font-size:1.3rem;
-    font-weight:600;
-  }
-  #reader{
-    width:100%;
-    max-width:420px;
-    margin:20px auto;
-    display:none;
-  }
-  .status{
-    padding:16px;
-    font-size:1.3rem;
-    font-weight:bold;
-    margin-top:10px;
-  }
-  .idle{ background:#111827; }
-  .ok{ background:#0a7a32; }
-  .bad{ background:#8a1c1c; }
-
-  button{
-    background:#1663ff;
-    color:#fff;
-    border:none;
-    padding:14px 22px;
-    font-size:1.1rem;
-    border-radius:10px;
-    cursor:pointer;
-    margin-top:20px;
-  }
+  body{margin:0;font-family:system-ui,Arial;background:#0b1220;color:#fff;text-align:center}
+  header{padding:14px;background:#020617;font-size:1.3rem;font-weight:600}
+  #reader{width:100%;max-width:420px;margin:20px auto;display:none}
+  .status{padding:16px;font-size:1.2rem;font-weight:bold;margin-top:10px}
+  .idle{background:#111827}.ok{background:#0a7a32}.bad{background:#8a1c1c}
+  button{background:#1663ff;color:#fff;border:none;padding:14px 22px;font-size:1.1rem;border-radius:10px;cursor:pointer;margin-top:20px}
+  .small{opacity:.8;font-size:.95rem}
 </style>
 </head>
 <body>
@@ -52,14 +20,22 @@
 <header>🎫 Validador de Tiquetes</header>
 
 <button id="startBtn">📷 Iniciar cámara</button>
+<div class="small">Si no inicia, revisa permisos de cámara y bloqueadores (AdBlock).</div>
 
 <div id="reader"></div>
 
-<div id="status" class="status idle">
-  Apunte el QR al lector
-</div>
+<div id="status" class="status idle">Apunte el QR al lector</div>
 
+<!-- CDN 1 -->
 <script src="https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js"></script>
+<!-- CDN 2 (fallback si CDN 1 falla) -->
+<script>
+  if (typeof Html5Qrcode === "undefined") {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.9/html5-qrcode.min.js";
+    document.head.appendChild(s);
+  }
+</script>
 
 <script>
 const statusBox = document.getElementById("status");
@@ -81,14 +57,12 @@ function beep(ok=true){
 
 function onScanSuccess(decodedText){
   const now = Date.now();
-
   if (lastRead.has(decodedText) && now - lastRead.get(decodedText) < COOLDOWN){
     statusBox.textContent = "❌ TIQUETE YA REGISTRADO";
     statusBox.className = "status bad";
     beep(false);
     return;
   }
-
   lastRead.set(decodedText, now);
   qrLeidos.add(decodedText);
 
@@ -99,22 +73,23 @@ function onScanSuccess(decodedText){
   console.log("QR:", decodedText);
 }
 
-function onScanFailure(error){
-  // ignorar
-}
+function onScanFailure(_) { /* ignorar */ }
 
-const html5QrCode = new Html5Qrcode("reader");
+function startScanner(){
+  if (typeof Html5Qrcode === "undefined") {
+    statusBox.textContent = "❌ No se cargó la librería QR (bloqueada o sin internet)";
+    statusBox.className = "status bad";
+    return;
+  }
 
-startBtn.addEventListener("click", () => {
   startBtn.style.display = "none";
   reader.style.display = "block";
 
+  const html5QrCode = new Html5Qrcode("reader");
+
   html5QrCode.start(
     { facingMode: "environment" },
-    {
-      fps: 10,
-      qrbox: { width: 250, height: 250 }
-    },
+    { fps: 10, qrbox: { width: 250, height: 250 } },
     onScanSuccess,
     onScanFailure
   ).catch(err=>{
@@ -122,10 +97,17 @@ startBtn.addEventListener("click", () => {
     statusBox.className = "status bad";
     console.error(err);
   });
+}
+
+startBtn.addEventListener("click", () => {
+  // Esperar un poquito por si el fallback aún está cargando
+  setTimeout(startScanner, 300);
 });
 </script>
 
 </body>
 </html>
+
+
 
 
