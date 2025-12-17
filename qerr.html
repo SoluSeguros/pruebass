@@ -2,111 +2,232 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Validador de Tiquetes</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lector de Códigos QR</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+
+<!-- LIBRERÍA QR -->
+<script src="https://unpkg.com/html5-qrcode@2.3.10/html5-qrcode.min.js"></script>
 
 <style>
-  body{margin:0;font-family:system-ui,Arial;background:#0b1220;color:#fff;text-align:center}
-  header{padding:14px;background:#020617;font-size:1.3rem;font-weight:600}
-  #reader{width:100%;max-width:420px;margin:20px auto;display:none}
-  .status{padding:16px;font-size:1.2rem;font-weight:bold;margin-top:10px}
-  .idle{background:#111827}.ok{background:#0a7a32}.bad{background:#8a1c1c}
-  button{background:#1663ff;color:#fff;border:none;padding:14px 22px;font-size:1.1rem;border-radius:10px;cursor:pointer;margin-top:20px}
-  .small{opacity:.8;font-size:.95rem}
+:root{
+  --bg:#0b1220;
+  --card:#0f172a;
+  --ink:#e5e7eb;
+  --muted:#94a3b8;
+  --line:rgba(255,255,255,.12);
+  --brand:#1663ff;
+  --ok:#22c55e;
+  --bad:#ef4444;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:var(--bg);
+  color:var(--ink);
+}
+
+header{
+  background:#0f172a;
+  padding:14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--line);
+}
+
+header h1{
+  font-size:18px;
+  margin:0;
+}
+
+main{
+  padding:16px;
+  max-width:600px;
+  margin:auto;
+}
+
+.card{
+  background:var(--card);
+  border-radius:16px;
+  border:1px solid var(--line);
+  padding:14px;
+  margin-bottom:16px;
+}
+
+.controls{
+  display:flex;
+  gap:8px;
+  margin-bottom:10px;
+}
+
+button{
+  flex:1;
+  padding:10px;
+  border-radius:12px;
+  border:none;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.btn-start{background:var(--brand); color:white}
+.btn-stop{background:var(--bad); color:white}
+button:disabled{opacity:.5}
+
+#reader{
+  width:100%;
+  min-height:300px;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid var(--line);
+  background:black;
+}
+
+.status{
+  margin-top:10px;
+  padding:8px;
+  border-radius:10px;
+  font-size:14px;
+  text-align:center;
+  border:1px solid var(--line);
+}
+
+.status.ok{color:var(--ok)}
+.status.bad{color:var(--bad)}
+
+.result{
+  margin-top:12px;
+  background:rgba(255,255,255,.05);
+  border-radius:12px;
+  padding:10px;
+  border:1px solid var(--line);
+  word-break:break-word;
+  font-family:monospace;
+}
+
+ul{
+  list-style:none;
+  padding:0;
+  margin:0;
+}
+
+li{
+  padding:8px;
+  border-bottom:1px solid var(--line);
+  font-size:13px;
+  word-break:break-word;
+}
 </style>
 </head>
+
 <body>
 
-<header>🎫 Validador de Tiquetes</header>
+<header>
+  <h1>📷 Lector QR</h1>
+</header>
 
-<button id="startBtn">📷 Iniciar cámara</button>
-<div class="small">Si no inicia, revisa permisos de cámara y bloqueadores (AdBlock).</div>
+<main>
 
-<div id="reader"></div>
+  <div class="card">
+    <div class="controls">
+      <button id="startBtn" class="btn-start">Iniciar</button>
+      <button id="stopBtn" class="btn-stop" disabled>Detener</button>
+    </div>
 
-<div id="status" class="status idle">Apunte el QR al lector</div>
+    <div id="reader"></div>
 
-<!-- CDN 1 -->
-<script src="https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js"></script>
-<!-- CDN 2 (fallback si CDN 1 falla) -->
+    <div id="status" class="status">Listo</div>
+
+    <div class="result" id="result">—</div>
+  </div>
+
+  <div class="card">
+    <b>Historial</b>
+    <ul id="history"></ul>
+  </div>
+
+</main>
+
+<audio id="beep">
+  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=" type="audio/wav">
+</audio>
+
 <script>
-  if (typeof Html5Qrcode === "undefined") {
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.9/html5-qrcode.min.js";
-    document.head.appendChild(s);
-  }
-</script>
+let scanner = null;
+let lastQR = "";
+let lastTime = 0;
 
-<script>
-const statusBox = document.getElementById("status");
 const startBtn = document.getElementById("startBtn");
-const reader = document.getElementById("reader");
+const stopBtn = document.getElementById("stopBtn");
+const statusEl = document.getElementById("status");
+const resultEl = document.getElementById("result");
+const historyEl = document.getElementById("history");
+const beep = document.getElementById("beep");
 
-const qrLeidos = new Set();
-const lastRead = new Map();
-const COOLDOWN = 5000;
-
-function beep(ok=true){
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  osc.frequency.value = ok ? 1200 : 400;
-  osc.connect(ctx.destination);
-  osc.start();
-  setTimeout(()=>osc.stop(), ok ? 150 : 400);
+function setStatus(text, type=""){
+  statusEl.textContent = text;
+  statusEl.className = "status " + type;
 }
 
-function onScanSuccess(decodedText){
-  const now = Date.now();
-  if (lastRead.has(decodedText) && now - lastRead.get(decodedText) < COOLDOWN){
-    statusBox.textContent = "❌ TIQUETE YA REGISTRADO";
-    statusBox.className = "status bad";
-    beep(false);
-    return;
-  }
-  lastRead.set(decodedText, now);
-  qrLeidos.add(decodedText);
-
-  statusBox.textContent = "✅ TIQUETE VALIDADO";
-  statusBox.className = "status ok";
-  beep(true);
-
-  console.log("QR:", decodedText);
-}
-
-function onScanFailure(_) { /* ignorar */ }
-
-function startScanner(){
-  if (typeof Html5Qrcode === "undefined") {
-    statusBox.textContent = "❌ No se cargó la librería QR (bloqueada o sin internet)";
-    statusBox.className = "status bad";
+startBtn.onclick = async () => {
+  if(location.protocol !== "https:" && location.hostname !== "localhost"){
+    alert("La cámara SOLO funciona en HTTPS o localhost");
     return;
   }
 
-  startBtn.style.display = "none";
-  reader.style.display = "block";
+  scanner = new Html5Qrcode("reader");
 
-  const html5QrCode = new Html5Qrcode("reader");
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  setStatus("Escaneando...", "ok");
 
-  html5QrCode.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 250, height: 250 } },
-    onScanSuccess,
-    onScanFailure
-  ).catch(err=>{
-    statusBox.textContent = "❌ No se pudo acceder a la cámara";
-    statusBox.className = "status bad";
-    console.error(err);
-  });
-}
+  try{
+    await scanner.start(
+      { facingMode:"environment" },
+      { fps:12, qrbox:250 },
+      (text)=>{
+        const now = Date.now();
+        if(text === lastQR && now-lastTime < 1500) return;
 
-startBtn.addEventListener("click", () => {
-  // Esperar un poquito por si el fallback aún está cargando
-  setTimeout(startScanner, 300);
-});
+        lastQR = text;
+        lastTime = now;
+
+        resultEl.textContent = text;
+        setStatus("QR leído ✔", "ok");
+        beep.play().catch(()=>{});
+
+        const li = document.createElement("li");
+        li.textContent = new Date().toLocaleTimeString()+" → "+text;
+        historyEl.prepend(li);
+      }
+    );
+  }catch(e){
+    console.error(e);
+    setStatus("Error al abrir cámara", "bad");
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+};
+
+stopBtn.onclick = async () => {
+  if(scanner){
+    await scanner.stop();
+    await scanner.clear();
+    scanner = null;
+  }
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  setStatus("Detenido");
+};
 </script>
 
 </body>
 </html>
+
+
 
 
 
