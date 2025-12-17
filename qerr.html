@@ -3,37 +3,55 @@
 <head>
 <meta charset="UTF-8">
 <title>Validador de Tiquetes</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
   body{
     margin:0;
-    font-family: system-ui, Arial, sans-serif;
+    font-family:system-ui,Arial;
     background:#0b1220;
     color:#fff;
     text-align:center;
   }
-  h2{
-    margin:12px 0;
+  header{
+    padding:14px;
+    background:#020617;
+    font-size:1.3rem;
+    font-weight:600;
   }
   #reader{
     width:100%;
     max-width:420px;
-    margin:0 auto;
+    margin:20px auto;
+    display:none;
   }
   .status{
-    padding:18px;
-    font-size:1.4rem;
+    padding:16px;
+    font-size:1.3rem;
     font-weight:bold;
+    margin-top:10px;
   }
   .idle{ background:#111827; }
   .ok{ background:#0a7a32; }
   .bad{ background:#8a1c1c; }
+
+  button{
+    background:#1663ff;
+    color:#fff;
+    border:none;
+    padding:14px 22px;
+    font-size:1.1rem;
+    border-radius:10px;
+    cursor:pointer;
+    margin-top:20px;
+  }
 </style>
 </head>
 <body>
 
-<h2>🎫 Validador de Tiquetes</h2>
+<header>🎫 Validador de Tiquetes</header>
+
+<button id="startBtn">📷 Iniciar cámara</button>
 
 <div id="reader"></div>
 
@@ -41,29 +59,26 @@
   Apunte el QR al lector
 </div>
 
-<!-- LIBRERÍA ESTABLE PARA QR -->
 <script src="https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js"></script>
 
 <script>
 const statusBox = document.getElementById("status");
+const startBtn = document.getElementById("startBtn");
+const reader = document.getElementById("reader");
 
-// Control anti-duplicado
 const qrLeidos = new Set();
 const lastRead = new Map();
-const COOLDOWN = 5000; // ms
+const COOLDOWN = 5000;
 
-// 🔊 Beep
 function beep(ok=true){
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const osc = ctx.createOscillator();
-  osc.type = "sine";
   osc.frequency.value = ok ? 1200 : 400;
   osc.connect(ctx.destination);
   osc.start();
-  setTimeout(() => osc.stop(), ok ? 150 : 400);
+  setTimeout(()=>osc.stop(), ok ? 150 : 400);
 }
 
-// ✅ QR leído correctamente
 function onScanSuccess(decodedText){
   const now = Date.now();
 
@@ -82,34 +97,35 @@ function onScanSuccess(decodedText){
   beep(true);
 
   console.log("QR:", decodedText);
-
-  // 🔗 Aquí puedes enviar a backend con fetch()
-  // fetch("http://localhost:5000/qr", { method:"POST", body: decodedText })
 }
 
-// ❌ Fallos de lectura (se ignoran)
 function onScanFailure(error){
-  // No mostrar nada, es normal
+  // ignorar
 }
 
-// 🚀 Iniciar lector
 const html5QrCode = new Html5Qrcode("reader");
 
-html5QrCode.start(
-  { facingMode: "environment" }, // cámara trasera
-  {
-    fps: 10,
-    qrbox: { width: 250, height: 250 },
-    disableFlip: true
-  },
-  onScanSuccess,
-  onScanFailure
-).catch(err => {
-  statusBox.textContent = "❌ No se pudo acceder a la cámara";
-  statusBox.className = "status bad";
-  console.error(err);
+startBtn.addEventListener("click", () => {
+  startBtn.style.display = "none";
+  reader.style.display = "block";
+
+  html5QrCode.start(
+    { facingMode: "environment" },
+    {
+      fps: 10,
+      qrbox: { width: 250, height: 250 }
+    },
+    onScanSuccess,
+    onScanFailure
+  ).catch(err=>{
+    statusBox.textContent = "❌ No se pudo acceder a la cámara";
+    statusBox.className = "status bad";
+    console.error(err);
+  });
 });
 </script>
 
 </body>
 </html>
+
+
